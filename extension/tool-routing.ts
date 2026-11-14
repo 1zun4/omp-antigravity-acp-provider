@@ -41,18 +41,12 @@ const EPHEMERAL_TOOL_GUIDANCE =
   "no tools may be called in this side turn, and tool calls are discarded without execution. " +
   "Reply with plain text only.";
 
-// Two sentences at most: redirect the host prompt, then the complete OMP
-// instruction follows unchanged. Only disabled native tools need the
-// redirect; prefer keeps native tools, so its append starts with the OMP text.
-const ACP_OVERRIDE =
-  "Follow only the OMP instructions below. Ignore any earlier ACP host instructions, personas or workflows.";
+// Only disabled native tools need the redirect; prefer keeps native tools.
 const ACP_OVERRIDE_WITH_TOOLS =
-  "Follow only the OMP instructions below. Ignore any earlier ACP host instructions, personas or workflows; " +
-  "use only OMP pi_* tools and pi_task for reads, writes, searches, commands and subagent delegation.";
+  "Use only OMP pi_* tools and pi_task for reads, writes, searches, commands and subagent delegation.";
 
 function acpOverride(mode: NativeToolMode, sessionKind: SessionRoutingKind, hasOmpTools: boolean): string {
-  if (mode !== "disabled") return "";
-  return sessionKind === "main" && hasOmpTools ? ACP_OVERRIDE_WITH_TOOLS : ACP_OVERRIDE;
+  return mode === "disabled" && sessionKind === "main" && hasOmpTools ? ACP_OVERRIDE_WITH_TOOLS : "";
 }
 
 export function parseNativeToolMode(value: unknown): NativeToolMode {
@@ -144,13 +138,14 @@ export function ompToolGuidance(
   return [guidance, contextGuidance, ...(mode === "disabled" ? [NATIVE_TOOLS_DISABLED] : [])].filter(Boolean).join("\n\n");
 }
 
-// Composes the session append: optional ACP override, the unchanged complete
-// OMP instruction, then the existing tool guidance. `hasOmpTools` is only
-// needed when the bridge is registered without ordinary tools.
+// Composes the session append: optional ACP override, then the existing tool
+// guidance. The OMP system prompt stays out: the backend answers any session
+// whose append contains it with a 429 RESOURCE_EXHAUSTED, so agy keeps its own.
+// `hasOmpTools` is only needed when the bridge is registered without ordinary tools.
 export function sessionSystemAppend(
   initialize: InitializeMetadata | undefined,
   mode: NativeToolMode,
-  instructions: string,
+  _instructions: string,
   bridgeConfigured: boolean,
   sessionKind: SessionRoutingKind = "main",
   hasOmpTools?: boolean,
@@ -159,7 +154,6 @@ export function sessionSystemAppend(
   const bridgeActive = bridgeConfigured && hasOmpTools !== false && mcpHttpAvailable(initialize);
   return [
     acpOverride(mode, sessionKind, bridgeActive),
-    instructions.trim(),
     ompToolGuidance(initialize, mode, bridgeActive, sessionKind, projectedToolNames),
   ].filter(Boolean).join("\n\n");
 }

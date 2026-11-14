@@ -58,10 +58,10 @@ function appendOf(routed: SessionRpcRequest): string {
   return append;
 }
 
-test("session routing carries the complete OMP instruction and task mapping once", () => {
+test("session routing keeps the OMP instruction out and carries the task mapping once", () => {
   const result = sessionRoutingRequest(request, initialize, "prefer", instructions);
   const append = appendOf(result);
-  assert.ok(append.startsWith(instructions), "the complete native instruction must lead the append text");
+  assert.doesNotMatch(append, /CORE_POLICY/, "the OMP instruction must stay out of the append");
   assert.match(append, /OMP tools exposed by the authenticated pi-bridge MCP server use pi_ names/);
   assert.match(append, /guidance about task maps to pi_task/);
   assert.match(append, /follow the supplied tool schema for agent selection/);
@@ -84,7 +84,7 @@ test("main guidance maps only actually projected context tools without changing 
   assert.match(append, /guidance about new_context maps to pi_new_context/);
   assert.equal(append.match(/pi_task/gu)?.length, 2,
     "the existing task/delegation guidance must remain unchanged");
-  assert.equal(append.match(/Delegate separable work when requested\./gu)?.length, 1,
+  assert.equal(append.match(/Delegate separable work when requested\./gu)?.length, undefined,
     "context-note routing must not add general delegation instructions");
 
   const onlyNotes = bridgeWith(contextControlTools().slice(0, 1));
@@ -152,9 +152,9 @@ test("intent compatibility requires the exact control-tool host shapes", () => {
   assert.deepEqual((unrelated.parameters as unknown as Record<string, unknown>).required, ["i"]);
 });
 
-test("an ephemeral side session keeps the full instruction but never advertises tool calls", () => {
+test("an ephemeral side session never advertises tool calls", () => {
   const append = appendOf(sessionRoutingRequest(request, initialize, "prefer", instructions, "ephemeral"));
-  assert.ok(append.startsWith(instructions), "the complete native instruction still leads the append text");
+  assert.doesNotMatch(append, /CORE_POLICY/);
   assert.match(append, /no tools may be called in this side turn/);
   assert.match(append, /tool calls are discarded without execution/);
   assert.doesNotMatch(append, /maps to pi_task/);
@@ -178,7 +178,7 @@ test("capability absence cannot advertise pi_ tools in the append channel", () =
   assert.match(appendOf(noBridge), /pi-bridge MCP server is not available/);
   assert.doesNotMatch(appendOf(noBridge), /maps to pi_task/);
   const disabled = appendOf(sessionRoutingRequest(request, noHttp, "disabled", instructions));
-  assert.doesNotMatch(disabled, /use only OMP pi_\* tools/u);
+  assert.doesNotMatch(disabled, /Use only OMP pi_\* tools/u);
   assert.match(disabled, /pi-bridge MCP server is not available/u);
 });
 
@@ -204,7 +204,7 @@ test("disabled mode filters built-ins but retains MCP configuration and existing
   assert.equal(result._meta?.antigravity?.extra, 2);
   const append = appendOf(result);
   assert.doesNotMatch(append, /^Existing instructions/);
-  assert.ok(append.includes(instructions));
+  assert.doesNotMatch(append, /CORE_POLICY/);
   assert.match(append, /native tools are disabled/);
   assert.deepEqual(result._meta?.antigravity?.eagerMcpServers, ["other-server", "pi-bridge"]);
   assert.deepEqual(result.mcpServers, request.mcpServers);
@@ -263,7 +263,7 @@ function metaOf(args: unknown[]): RoutedMeta {
   return value as RoutedMeta;
 }
 
-test("new, load and resume requests all carry the complete instruction once", () => {
+test("new, load and resume requests all route without the OMP instruction", () => {
   const requests: SessionRpcRequest[] = [
     { ...request },
     { sessionId: "fixture", ...request },
@@ -274,15 +274,14 @@ test("new, load and resume requests all carry the complete instruction once", ()
     assert.deepEqual(routed._meta?.antigravity?.enabledTools, []);
     assert.deepEqual(routed._meta?.antigravity?.eagerMcpServers, ["pi-bridge"]);
     const append = appendOf(routed);
-    assert.ok(append.includes(instructions), "the complete instruction must be carried");
     assert.match(append, /maps to pi_task/);
     assert.match(append, /native tools are disabled/);
-    assert.equal(append.match(/CORE_POLICY/gu)?.length, 1, "routing must not duplicate instructions");
+    assert.doesNotMatch(append, /CORE_POLICY/, "the OMP instruction must stay out of the append");
     assert.equal(current._meta, undefined, "the caller's request must not be mutated");
   }
 });
 
-test("disabled routing redirects the host prompt before the complete OMP text", () => {
+test("disabled routing leads with the pi_ tool redirect before the tool guidance", () => {
   const original: SessionRpcRequest = {
     ...request,
     _meta: { antigravity: { extra: "kept", systemPrompt: { append: "Existing host instructions" } } },
@@ -290,23 +289,20 @@ test("disabled routing redirects the host prompt before the complete OMP text", 
   const routed = sessionRoutingRequest(original, initialize, "disabled", instructions);
   const append = appendOf(routed);
   assert.ok(!append.includes("Existing host instructions"), "inherited append content must not be replayed");
-  assert.ok(append.indexOf("Follow only the OMP instructions below.") < append.indexOf("CORE_POLICY"),
-    "the override must precede the unchanged OMP instruction");
-  assert.match(append, /use only OMP pi_\* tools and pi_task for reads, writes, searches, commands and subagent delegation/);
-  assert.ok(append.indexOf("CORE_POLICY") < append.indexOf("OMP tools exposed by the authenticated pi-bridge"),
-    "existing tool guidance stays after the instruction");
+  assert.ok(append.startsWith("Use only OMP pi_* tools and pi_task for reads, writes, searches, commands and subagent delegation"));
+  assert.ok(append.indexOf("Use only OMP pi_*") < append.indexOf("OMP tools exposed by the authenticated pi-bridge"),
+    "existing tool guidance stays after the redirect");
+  assert.doesNotMatch(append, /CORE_POLICY/);
   assert.equal(routed._meta?.antigravity?.extra, "kept");
   assert.equal(original._meta?.antigravity?.systemPrompt?.append, "Existing host instructions");
 
   const preferred = appendOf(sessionRoutingRequest(request, initialize, "prefer", instructions));
-  assert.ok(preferred.startsWith(instructions), "prefer keeps the unchanged OMP instruction first");
-  assert.doesNotMatch(preferred, /Follow only the OMP instructions below/);
+  assert.doesNotMatch(preferred, /CORE_POLICY|Use only OMP pi_\*/);
 });
 
-test("an ephemeral or tool-less session gets only the short ACP override", () => {
+test("an ephemeral or tool-less session gets no tool redirect", () => {
   const ephemeral = sessionRoutingRequest(request, initialize, "disabled", instructions, "ephemeral");
   const ephemeralAppend = appendOf(ephemeral);
-  assert.ok(ephemeralAppend.startsWith("Follow only the OMP instructions below."));
   assert.doesNotMatch(ephemeralAppend, /pi_\*|pi_task|subagent delegation/);
   assert.match(ephemeralAppend, /no tools may be called in this side turn/);
   assert.match(ephemeralAppend, /native tools are disabled/);
@@ -318,7 +314,6 @@ test("an ephemeral or tool-less session gets only the short ACP override", () =>
 
   const toolLess = sessionRoutingRequest(request, initialize, "disabled", instructions, "main", false);
   const toolLessAppend = appendOf(toolLess);
-  assert.ok(toolLessAppend.startsWith("Follow only the OMP instructions below."));
   assert.doesNotMatch(toolLessAppend, /pi_\*|pi_task|subagent delegation/);
   assert.match(toolLessAppend, /no OMP tools are exposed/);
   assert.deepEqual(toolLess._meta?.antigravity?.eagerMcpServers, [],
@@ -368,11 +363,10 @@ test("TierConnection hands each route to the base session method as _meta", asyn
     assert.equal(meta.custom, "keep", "caller metadata survives routing");
     const append = meta.antigravity?.systemPrompt?.append;
     assert.ok(typeof append === "string", "the routed request must carry a string system append");
-    assert.ok(append.startsWith("Follow only the OMP instructions below."));
-    assert.match(append, /use only OMP pi_\* tools and pi_task/);
+    assert.ok(append.startsWith("Use only OMP pi_* tools and pi_task"));
     assert.match(append, /pi_context_notes/);
     assert.match(append, /pi_new_context/);
-    assert.equal(append.match(/CORE_POLICY/gu)?.length, 1, "routing must not duplicate the instruction");
+    assert.doesNotMatch(append, /CORE_POLICY/, "the OMP instruction must stay out of the append");
     assert.deepEqual(meta.antigravity?.enabledTools, []);
     assert.deepEqual(meta.antigravity?.eagerMcpServers, ["pi-bridge"]);
 
@@ -386,7 +380,6 @@ test("TierConnection hands each route to the base session method as _meta", asyn
     assert.equal(resumed.args[3], undefined, "the signal slot must stay positional");
     const resumedAppend = metaOf(resumed.args).antigravity?.systemPrompt?.append;
     assert.ok(typeof resumedAppend === "string");
-    assert.ok(resumedAppend.startsWith("Follow only the OMP instructions below."));
     assert.doesNotMatch(resumedAppend, /pi_task|subagent delegation/);
     assert.match(resumedAppend, /no tools may be called in this side turn/);
 
@@ -394,7 +387,7 @@ test("TierConnection hands each route to the base session method as _meta", asyn
     assert.equal(calls[2]!.method, "loadSession");
     assert.equal(calls[2]!.args[0], "saved");
     assert.equal(calls[2]!.args[3], undefined, "the signal slot must stay positional");
-    assert.match(metaOf(calls[2]!.args).antigravity?.systemPrompt?.append ?? "", /CORE_POLICY/);
+    assert.doesNotMatch(metaOf(calls[2]!.args).antigravity?.systemPrompt?.append ?? "", /CORE_POLICY/);
 
     advertised = { agentCapabilities: { mcpCapabilities: { http: true } } };
     await assert.rejects(disabled.newSession("/fixture", undefined, mcpServers), /refusing to weaken/);

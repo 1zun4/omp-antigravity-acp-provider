@@ -445,7 +445,7 @@ test("shadow routing: the side append says no tools may run while main keeps pi_
     assert.equal(shadowConnection.sessionKind, "ephemeral");
     const sideAppend = shadowConnection.sessionRequests[0]?._meta?.antigravity?.systemPrompt?.append;
     assert.equal(typeof sideAppend, "string");
-    assert.ok(sideAppend.startsWith("FIXTURE_RULES"), "the complete main instruction is still carried");
+    assert.doesNotMatch(sideAppend, /FIXTURE_RULES/, "the main instruction stays out of the append");
     assert.match(sideAppend, /no tools may be called in this side turn/);
     assert.match(sideAppend, /tool calls are discarded without execution/);
     assert.doesNotMatch(sideAppend, /maps to pi_task/);
