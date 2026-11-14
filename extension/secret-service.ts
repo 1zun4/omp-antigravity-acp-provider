@@ -73,7 +73,13 @@ function extractEmailFromKeyringPayload(stdout: string): string | undefined {
 // or undefined (no usable keyring, so the item is neither confirmed absent nor
 // removed). A lookup answer is only the presence of non-empty stdout: the
 // secret itself is dropped immediately and never cached, logged or persisted.
-export function createSecretService(run: (args: string[]) => Promise<string>, platform: NodeJS.Platform = process.platform) {
+export function createSecretService(
+  run: (args: string[]) => Promise<string>,
+  platform: NodeJS.Platform = process.platform,
+  env: NodeJS.ProcessEnv = process.env,
+) {
+  // With the file backend forced, the runtime never touches the keyring.
+  if (env.AGY_ACP_FORCE_FILE_STORAGE?.trim()) platform = "none" as NodeJS.Platform;
   const present = async (): Promise<boolean | undefined> => {
     try {
       const stdout = await run(LOOKUP);
