@@ -49,7 +49,7 @@ function inferenceConnection(authRequests: AuthRequest[]) {
     async authenticate(request: AuthRequest) { authRequests.push(request); },
     async newSession() { sessionId = "fixture"; return { sessionId, modes, models }; },
     getSessionState() { return { modes, models }; },
-    async setMode() { return undefined; },
+    async setMode(_sessionId: string, modeId: string) { modes.currentModeId = modeId; },
     async setModel() { return undefined; },
     holdPromptWatchdog() { return () => undefined; },
     async prompt() {

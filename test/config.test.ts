@@ -43,6 +43,7 @@ test("follow mode reads OMP tools.approvalMode with project overrides", () => {
   try {
     fs.mkdirSync(agent, { recursive: true });
     fs.mkdirSync(path.join(project, ".omp"), { recursive: true });
+    assert.equal(resolveAdapterPermissionMode("follow", agent, project), "yolo", "unset follows OMP's default");
     fs.writeFileSync(path.join(agent, "config.yml"), "tools:\n  approvalMode: yolo\n");
     assert.equal(readOmpApprovalMode(agent, project), "yolo");
     assert.equal(resolveAdapterPermissionMode("follow", agent, project), "yolo");

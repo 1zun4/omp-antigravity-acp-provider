@@ -213,7 +213,8 @@ export function resolveAdapterPermissionMode(
   cwd = process.cwd(),
 ): EffectivePermissionMode {
   if (preference !== "follow") return preference;
-  switch (readOmpApprovalMode(agentDir, cwd)) {
+  // OMP's schema default for an unset tools.approvalMode is yolo.
+  switch (readOmpApprovalMode(agentDir, cwd) ?? "yolo") {
     case "yolo": return "yolo";
     case "write": return "auto_edit";
     default: return "default";
